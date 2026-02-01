@@ -53,9 +53,24 @@ def on_message(client, userdata, message):
 
     if not 'cmd' in mesg:
         # if a message is not defined with cmd, ignore the message
-        return  
+        return 
+    
+    if mesg['cmd'] == 'MESG':
+        try:
+            aad = f"{mesg['topic']}|MESG|{mesg['name']}".encode()
+            key = get_chat_key()
 
-    if gDbg: print(f"Received: '{mesg}'")
+            plaintext = aes_decrypt(
+                key,
+                aad,
+                mesg['nonce'],
+                mesg['encrypt_text']
+            )
+
+            print(f"{mesg['name']}: {plaintext}")
+        except Exception as e:
+            
+            if gDbg: print(f"Received: '{mesg}'")
 
 # Student work {{
 
@@ -72,16 +87,23 @@ def get_chat_key() -> bytes:
     open(NTJCHAT_KEY, "wb").write(key)
     return key
 
-# encrypt text with AES
+# Encrypt message 
 
 def aes_encrypt(key: bytes, aad: bytes, plaintext: str) -> dict:
     nonce = os.urandom(12)
     # encrypt the data
-    encrypted_text = AESGCM(key).encrypt(nonce, plaintext.encode(), aad)
+    encrypt_text = AESGCM(key).encrypt(nonce, plaintext.encode(), aad)
     return {
         'nonce': base64.b64encode(nonce).decode(),
-        'encrypted_text' : base64.b64encode(encrypted_text).decode(),
+        'encrypt_text' : base64.b64encode(encrypt_text).decode(),
     }
+
+# Decrypt received message
+def aes_decrypt(key: bytes, aad: bytes, nonce_b64: str, enc_b64: str) -> str:
+    nonce = base64.b64decode(nonce_b64)
+    encrypt_bytes = base64.b64decode(enc_b64)  
+    decrypt_bytes = AESGCM(key).decrypt(nonce, encrypt_bytes, aad) 
+    return decrypt_bytes.decode()  
 
 
 # Student work }}
@@ -125,7 +147,7 @@ def session():
         mesg = { 'cmd': "MESG",
                  'topic': args.topic,
                  'name': args.name,
-                 'encrypted_text': encoded["encrypted_text"],
+                 'encrypt_text': encoded["encrypt_text"],
                  'nonce': encoded["nonce"]
                  
                   }
