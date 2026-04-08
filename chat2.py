@@ -7,6 +7,8 @@ import json
 from cryptography import x509
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 import os
 import base64
 
@@ -25,7 +27,7 @@ def arguments():
     parser.add_argument('--topic', help="MQTT chat topic (default '/acchat')", default='/NewTeamJournalists', required=False)
     
     # Name to join the chat
-    parser.add_argument('--name', help="MQTT client name (default, a random string)", required=False)
+    parser.add_argument('--name', help="MQTT client name (default, a random string)", required=True)
     
     # Debug mode
     parser.add_argument('--debug', '-D', help="Debug mode", action='store_true', required=False)
@@ -75,18 +77,25 @@ def on_message(client, userdata, message):
             if gDbg: print(f"Received: '{mesg}'")
 
     # Receive certificate from first message in the chat "HeLO"
-    elif mesg ['cmd'] == 'HELO':
+    elif mesg['cmd'] == 'HELO':
         try:
             client_cert = x509.load_pem_x509_certificate(mesg['cert'].encode())
             print(f"{mesg['name']} presented a certificate")
 
             if is_member(mesg['name'], client_cert, trusted_certs):
-                print(f"{mesg['name']} is trusted")
+
+                payload = f"{mesg['name']}|{mesg['topic']}|HELO".encode()
+
+                if verify_data(client_cert, payload, mesg['signature']):
+                    print(f"{mesg['name']} is trusted AND proved private key")
+                else:
+                    print(f"{mesg['name']} FAILED signature check")
+
             else:
                 print(f"{mesg['name']} is NOT trusted")
+
         except Exception as e:
-           if gDbg:
-               print(f"ERROR with Certificate: {e}")
+            print(f"ERROR with Certificate: {e}")
 
 # Student work {{
 
@@ -186,7 +195,6 @@ def load_member_certificates(folder="NewsTeamJournal Members"):
 
     return trusted
 
-
 # Check new joiner is in the member group
 
 def is_member(name: str, incoming_cert, trusted_certs: dict) -> bool:
@@ -199,7 +207,40 @@ def is_member(name: str, incoming_cert, trusted_certs: dict) -> bool:
     return trusted_pub == incoming_pub
 
 
+# Sign the key
+def sign_data(private_key, data: bytes) -> str:
+    signature = private_key.sign(
+        data,
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+    return base64.b64encode(signature).decode()
 
+
+
+# verify the key is correct
+def verify_data(cert, data: bytes, signature_b64: str) -> bool:
+    signature = base64.b64decode(signature_b64)
+    public_key = cert.public_key()
+
+    try:
+        public_key.verify(
+            signature,
+            data,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        return True
+    except Exception:
+        return False
+    
+    
 
 # Student work }}
 
@@ -208,10 +249,17 @@ def session():
     cert_text = get_certificate_text("Certificates")
 
 # The first message in the protocol ('HELO')
+
+    _, my_private_key = import_certificate("Certificates")
+
+    payload = f"{args.name}|{args.topic}|HELO".encode()
+    signature = sign_data(my_private_key, payload)
+
     mesg = {'cmd': "HELO",
             'topic': args.topic, 
             'name': args.name,
-            'cert': cert_text
+            'cert': cert_text,
+            'signature': signature
         }
 
     # publish your message through JSON to the server
