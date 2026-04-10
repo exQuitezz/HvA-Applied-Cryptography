@@ -1,0 +1,31 @@
+# User Guide – Chat Application
+
+## Configuration
+Before starting the application, you can adjust the following constants in the code to control its behavior:
+
+- `GROUPKEY = "NTJkey.bin"`  
+  Change the filename to create or use a different group key.
+
+- `MAX_CHARS = 250`  
+  Sets the maximum number of characters allowed per message.
+
+- `MEMBER_FOLDER = "NewsTeamJournal Members"`  
+  Folder used to store certificates of trusted (permanent) group members.  
+  Make sure this folder exists if you want to persist trusted users.
+
+- `PERSONAL_ID = "Personal ID"`  
+  Folder containing your personal certificate (`.crt`) and private key (`.key`).  
+  This folder must exist and contain both files.
+---
+
+## Starting the application
+Run the chat application from the terminal:
+
+## IMPORTANT!!
+- The `--name` MUST match the identity used in your certificate
+- The `Personal ID` folder must contain both a `.crt` and `.key` file
+- All users must use the same MQTT topic to communicate
+- Without receiving the group key, messages cannot be decrypted
+
+```bash
+python3 chat.py --name <your_name>
